@@ -9,6 +9,8 @@
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
 
+#include "spline.h"
+
 using namespace std;
 
 // for convenience
@@ -159,6 +161,27 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
+const double lane_width = 4.;
+
+double laneToPosition(int nLane)
+{
+	if(nLane < 0 || nLane > 2)
+		nLane = 0;
+
+	return lane_width / 2. + nLane *lane_width;
+}
+
+int laneFromPosition(double d)
+{
+	return static_cast<int>(floor(d / lane_width));
+}
+
+//(x,y) vector norm 
+double norm2(double x, double y)
+{
+	return sqrt(x*x + y*y);
+}
+
 int main() {
   uWS::Hub h;
 
@@ -235,11 +258,146 @@ int main() {
 
           	json msgJson;
 
-          	vector<double> next_x_vals;
-          	vector<double> next_y_vals;
-
 
           	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
+						int prev_size = previous_path_x.size();
+						static double speed_mps = 0.02;
+
+						const double target_speed_mph = 49.6;
+						const double mph_2_mps = 1. / 2.237;
+						const double target_speed_mps = 49.6 / 2.237;
+						const double time_step = 0.02;
+						int lane = 1;
+
+						int slow_down(0);
+						for (int i = 0; i < sensor_fusion.size(); ++i) {
+							float d = sensor_fusion[i][6];
+
+							//may need more precise calculations
+							if (laneFromPosition(d) == lane) {
+								double vx = sensor_fusion[i][3];
+								double vy = sensor_fusion[i][4];
+								double vehicle_speed = norm2(vx, vy);
+								double vehicle_s = sensor_fusion[i][5];
+
+								//if (prev_size > 0) vehicle_s -= prev_size * time_step * vehicle_speed;
+
+								//TODO: safe distance calculation!!!
+								double distance = (vehicle_s - car_s);
+								if (vehicle_s > car_s && distance < 30 && vehicle_speed - speed_mps < 0.01) {
+									slow_down = (int)(floor(30. * 30. / (distance*distance)));
+									std::cout << "distance = " << distance << ", Slow Down by " << slow_down << std::endl;
+								}
+							}
+						}
+
+
+						if (slow_down && speed_mps > 0.1) {
+							speed_mps -= 0.1 * slow_down;
+							std::cout << " -";
+						}
+						else if (speed_mps < target_speed_mps - 0.1) {
+							speed_mps += 0.2;
+							std::cout << " +";
+						}
+
+						if (speed_mps <= 0)
+							speed_mps = 0.1;
+						std::vector<double> pts_x;
+						std::vector<double> pts_y;
+
+						double ref_x = car_x;
+						double ref_y = car_y;
+						double ref_yaw = deg2rad(car_yaw);
+						double prev_x = car_x;
+						double prev_y = car_y;
+
+						//std::cout << "car_x=" << car_x << ", car_y=" << car_y << std::endl;
+						//std::cout << "car_s=" << car_s << ", car_d=" << car_d << std::endl;
+						//vector<double> next_point0 = getXY(car_s, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+						//std::cout << "getX = " << next_point0[0] << ", getY=" << next_point0[1] << std::endl;
+
+						if (prev_size <= 1) {
+							prev_x = car_x - cos(car_yaw);
+							prev_y = car_y - sin(car_yaw);
+						}
+						else {
+							ref_x = previous_path_x[prev_size - 1]; //is it a vector? Can I get last el?
+							ref_y = previous_path_y[prev_size - 1]; //is it a vector? Can I get last el?
+
+							prev_x = previous_path_x[prev_size - 2];
+							prev_y = previous_path_y[prev_size - 2];
+							ref_yaw = atan2(ref_y - prev_y, ref_x - prev_x);
+						}
+						pts_x.push_back(prev_x);
+						pts_x.push_back(ref_x);
+						pts_y.push_back(prev_y);
+						pts_y.push_back(ref_y);
+
+						vector<double> next_point30 = getXY(car_s + 30, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+						vector<double> next_point60 = getXY(car_s + 60, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+						vector<double> next_point90 = getXY(car_s + 90, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+
+						pts_x.push_back(next_point30[0]);
+						pts_x.push_back(next_point60[0]);
+						pts_x.push_back(next_point90[0]);
+
+						pts_y.push_back(next_point30[1]);
+						pts_y.push_back(next_point60[1]);
+						pts_y.push_back(next_point90[1]);
+
+						//for (double x : pts_x) std::cout << x << std::endl;
+
+
+						for (int i = 0; i < pts_x.size(); ++i) {
+							double shift_x = pts_x[i] - ref_x;
+							double shift_y = pts_y[i] - ref_y;
+
+							pts_x[i] = (shift_x * cos(0 - ref_yaw) - shift_y * sin(0 - ref_yaw));
+							pts_y[i] = (shift_x * sin(0 - ref_yaw) + shift_y * cos(0 - ref_yaw));
+						}
+
+						//for (double x : pts_x) 	std::cout << x << std::endl;
+
+						tk::spline s;
+						s.set_points(pts_x, pts_y);
+
+						vector<double> next_x_vals;
+						vector<double> next_y_vals;
+
+						//all prev points from the last time
+						// TODO: replace with simple vector copy
+						for (int i = 0; i < previous_path_x.size(); ++i) {
+							next_x_vals.push_back(previous_path_x[i]);
+							next_y_vals.push_back(previous_path_y[i]);
+						}
+
+						double target_x = 30.;
+						double target_y = s(target_x);
+						double target_dist = norm2(target_x, target_y);
+
+						double x_start = 0;
+
+						for (int i = 0; i < 50 - previous_path_x.size(); ++i) {
+
+							double N = target_dist / (time_step * speed_mps);
+							double x = x_start + target_x / N;
+							double y = s(x);
+							//std::cout << "(" << x << ", " << y << ") - > " ;
+
+							x_start = x;
+
+							double x_point = x * cos(ref_yaw) - y * sin(ref_yaw);
+							double y_point = x * sin(ref_yaw) + y * cos(ref_yaw);
+
+							x_point += ref_x;
+							y_point += ref_y;
+
+							next_x_vals.push_back(x_point);
+							next_y_vals.push_back(y_point);
+							//std::cout << "(" << x_point << ", " << y_point << ")" << std::endl;
+						}
+		
           	msgJson["next_x"] = next_x_vals;
           	msgJson["next_y"] = next_y_vals;
 
