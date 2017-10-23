@@ -185,16 +185,18 @@ double norm2(double x, double y)
 }
 
 
-bool CanGo(double distance, double relSpeed)
+int CanGo(double distance, double relSpeed)
 {
-	if (distance > -5 && distance < 20)
-		return false;
-	else if (distance > -10 && distance <= -5 && relSpeed < -0.5)
-		return false;
-	else if (distance >= 20 && distance < 40 & relSpeed > 0.1)
-		return false;
+	if (distance > -9 && distance < 25)
+		return 0;
+	else if (distance > -15 && distance <= -8 && relSpeed > 0)
+		return 0;
+	else if (distance >= 30 && distance < 40 & relSpeed > -0.3)
+		return 0;
+	else if (distance < 60)
+		return 1;
 
-	return true;
+	return 2;
 }
 
 int main() {
@@ -272,7 +274,7 @@ int main() {
 						int prev_size = previous_path_x.size();
 						static double speed_mps = 0.02;
 
-						const double target_speed_mph = 49.1;
+						const double target_speed_mph = 49.6;
 						const double mph_2_mps = 1. / 2.237;
 						const double target_speed_mps = target_speed_mph / 2.237;
 						const double time_step = 0.02;
@@ -284,31 +286,37 @@ int main() {
 							otherCars.push_back(Car(sensor_fusion[i]));
 						}
 
-						bool bCanGoLeft = (lane > 0);
-						bool bCanGoRight = (lane < 2);
+						bool bCanGoLeft = (lane > 0) && (lane == laneFromPosition(ego_car.d));
+						bool bCanGoRight = (lane < 2) && (lane == laneFromPosition(ego_car.d));
 
 
+						bool bAnyCars(false);
 						for (Car vehicle : otherCars) {
 							//may need more precise calculations
 							int laneOther = laneFromPosition(vehicle.d);
 							double distance = (vehicle.s - ego_car.s);
 							double relSpeed = vehicle.speed_mps - ego_car.speed_mps;
+							if (distance < 60 && distance > -15) {
+								bAnyCars = true;
+								std::cout << laneOther << ": " << floor(distance) << "; ";
+							}
 							if (laneOther == lane) {
 								//if (prev_size > 0) vehicle_s -= prev_size * time_step * vehicle_speed;
 
 								//TODO: safe distance calculation!!!
-								if (vehicle.s > ego_car.s && distance < 40 && relSpeed < 0.01) {
-									slow_down = (int)(floor(40. * 40. / (distance*distance)));
-									//std::cout << "distance = " << distance << ", Slow Down by " << slow_down << std::endl;
+								if (distance > 0 && distance < 40 && relSpeed < 0.1) {
+										slow_down = (int)(floor(40. * 40. / (distance*distance)));
 								}
 							}
 							else if (laneOther == lane - 1) {
-								bCanGoLeft = bCanGoLeft &&  CanGo(distance, relSpeed);
+								bCanGoLeft = bCanGoLeft &&  (CanGo(distance, relSpeed) > 0);
 							}
 							else if (laneOther == lane + 1) {
-								bCanGoRight = bCanGoRight &&  CanGo(distance, relSpeed);
+								bCanGoRight = bCanGoRight &&  (CanGo(distance, relSpeed) >0);
 							}
 						}
+						if (bAnyCars)
+							std::cout << std::endl;
 
 
 						if (slow_down) {
@@ -322,8 +330,12 @@ int main() {
 								speed_mps -= 0.1 * slow_down;
 							}
 						}
-						else if (speed_mps < target_speed_mps - 0.1) {
-							speed_mps += 0.2;
+						else {
+							if (speed_mps < target_speed_mps - 0.1) {
+								speed_mps += 0.2;
+							}
+							if ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft))
+								lane = 1;
 						}
 
 						if (speed_mps <= 0)
@@ -388,16 +400,10 @@ int main() {
 						vector<double> next_y_vals;
 
 						//all prev points from the last time
-						// TODO: replace with simple vector copy
-						double diff_y, diff_x;
 						for (int i = 0; i < previous_path_x.size(); ++i) {
 							next_x_vals.push_back(previous_path_x[i]);
 							next_y_vals.push_back(previous_path_y[i]);
 							//if ( i > previous_path_x.size() -3 ) 	std::cout << "p(" << previous_path_x[i] << ", " << previous_path_y[i] << "); ";
-						}
-						if (previous_path_x.size() > 0) {
-							diff_y = previous_path_y[previous_path_y.size() - 1];
-							diff_x = previous_path_x[previous_path_x.size() - 1];
 						}
 
 						double target_x = 30.;
@@ -419,16 +425,10 @@ int main() {
 
 							x_point += ref_x;
 							y_point += ref_y;
-							if (i == 1) {
-								diff_y = y_point - diff_y;
-								diff_x = x_point - diff_x;
-							}
-							//if (i < 3) std::cout << "n(" << x_point << ", " << y_point << "); ";
 
 							next_x_vals.push_back(x_point);
 							next_y_vals.push_back(y_point);
 						}
-						std::cout << "= " << (int)(diff_x*10) << ", " << (int)(diff_y*10) << std::endl;
 		
           	msgJson["next_x"] = next_x_vals;
           	msgJson["next_y"] = next_y_vals;
