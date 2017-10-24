@@ -191,7 +191,7 @@ int CanGo(double distance, double relSpeed)
 		return 0;
 	else if (distance > -15 && distance <= -8 && relSpeed > 0)
 		return 0;
-	else if (distance >= 30 && distance < 40 & relSpeed > -0.3)
+	else if (distance >= 30 && distance < 40 & relSpeed < -0.2)
 		return 0;
 	else if (distance < 60)
 		return 1;
@@ -280,7 +280,7 @@ int main() {
 						const double time_step = 0.02;
 						static int lane = 1;
 
-						int slow_down(0);
+						double slow_down(0.);
 						std::vector<Car> otherCars;
 						for (int i = 0; i < sensor_fusion.size(); ++i) {
 							otherCars.push_back(Car(sensor_fusion[i]));
@@ -291,11 +291,15 @@ int main() {
 
 
 						bool bAnyCars(false);
+						double distances[3] = {999., 999., 999.};	
 						for (Car vehicle : otherCars) {
 							//may need more precise calculations
 							int laneOther = laneFromPosition(vehicle.d);
 							double distance = (vehicle.s - ego_car.s);
 							double relSpeed = vehicle.speed_mps - ego_car.speed_mps;
+							if (distance > 0 && distance < distances[laneOther])
+								distances[laneOther] = distance;				
+			
 							if (distance < 60 && distance > -15) {
 								bAnyCars = true;
 								std::cout << laneOther << ": " << floor(distance) << "; ";
@@ -304,8 +308,8 @@ int main() {
 								//if (prev_size > 0) vehicle_s -= prev_size * time_step * vehicle_speed;
 
 								//TODO: safe distance calculation!!!
-								if (distance > 0 && distance < 40 && relSpeed < 0.1) {
-										slow_down = (int)(floor(40. * 40. / (distance*distance)));
+								if (distance > 0 && distance < 40 && relSpeed < -0.2) {
+										slow_down = (30. * 30.) / (distance*distance);
 								}
 							}
 							else if (laneOther == lane - 1) {
@@ -320,6 +324,10 @@ int main() {
 
 
 						if (slow_down) {
+							if (bCanGoLeft && bCanGoRight) {
+								if (distances[0] < 80 && distances[0] < distances[2])
+									bCanGoLeft = false;
+							}
 							if (bCanGoLeft ) {
 								lane--;
 							}
@@ -334,7 +342,7 @@ int main() {
 							if (speed_mps < target_speed_mps - 0.1) {
 								speed_mps += 0.2;
 							}
-							if ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft))
+							if (distances[1] >= 80 && ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft)) )
 								lane = 1;
 						}
 
