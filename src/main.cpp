@@ -292,40 +292,50 @@ int main() {
 
 						bool bAnyCars(false);
 						double distances[3] = {999., 999., 999.};	
+						double speeds[3] = { 999., 999., 999. };
 						for (Car vehicle : otherCars) {
 							//may need more precise calculations
 							int laneOther = laneFromPosition(vehicle.d);
 							double distance = (vehicle.s - ego_car.s);
 							double relSpeed = vehicle.speed_mps - ego_car.speed_mps;
-							if (distance > 0 && distance < distances[laneOther])
-								distances[laneOther] = distance;				
-			
+							if (distance > 0) {
+								if (distance < distances[laneOther])
+									distances[laneOther] = distance;
+								if (relSpeed < speeds[laneOther])
+									speeds[laneOther] = relSpeed;
+							}
 							if (distance < 60 && distance > -15) {
 								bAnyCars = true;
-								std::cout << laneOther << ": " << floor(distance) << "; ";
 							}
 							if (laneOther == lane) {
 								//if (prev_size > 0) vehicle_s -= prev_size * time_step * vehicle_speed;
 
 								//TODO: safe distance calculation!!!
-								if (distance > 0 && distance < 40 && relSpeed < -0.2) {
+								if (distance > 0 && distance < 40 && relSpeed < -0.1) {
 										slow_down = (30. * 30.) / (distance*distance);
 								}
 							}
 							else if (laneOther == lane - 1) {
-								bCanGoLeft = bCanGoLeft &&  (CanGo(distance, relSpeed) > 0);
+								bCanGoLeft = bCanGoLeft && (CanGo(distance, relSpeed) > 0);
 							}
 							else if (laneOther == lane + 1) {
-								bCanGoRight = bCanGoRight &&  (CanGo(distance, relSpeed) >0);
+								bCanGoRight = bCanGoRight && (CanGo(distance, relSpeed) > 0);
 							}
 						}
-						if (bAnyCars)
-							std::cout << std::endl;
 
+						bCanGoLeft  = bCanGoLeft  && (distances[lane-1] + speeds[lane-1] > speeds[lane] + distances[lane]);
+						bCanGoRight = bCanGoRight && (distances[lane+1] + speeds[lane+1] > speeds[lane] + distances[lane]);
+						if (bAnyCars) {
+							for (int i = 0; i < 3; i++) {
+								//std::cout << floor(distances[i]) << ":" << floor(speeds[i]) << "=" << floor(distances[i] + speeds[i] * 10) << ";  ";
+								std::cout <<  floor(distances[i] + speeds[i] * 2) << ";  ";
+							}
+							std::cout << std::endl;
+						}
 
 						if (slow_down) {
 							if (bCanGoLeft && bCanGoRight) {
-								if (distances[0] < 80 && distances[0] < distances[2])
+								if (distances[0] < 80 && (distances[0] + speeds[0] * 2 < distances[2] + speeds[2] * 2))
 									bCanGoLeft = false;
 							}
 							if (bCanGoLeft ) {
@@ -376,9 +386,9 @@ int main() {
 						pts_y.push_back(prev_y);
 						pts_y.push_back(ref_y);
 
-						vector<double> next_point30 = getXY(ego_car.s + 50, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
-						vector<double> next_point60 = getXY(ego_car.s + 70, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
-						vector<double> next_point90 = getXY(ego_car.s + 90, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+						vector<double> next_point30 = getXY(ego_car.s + speed_mps * 2.4, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+						vector<double> next_point60 = getXY(ego_car.s + speed_mps * 3.6, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+						vector<double> next_point90 = getXY(ego_car.s + speed_mps * 4.2, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
 						pts_x.push_back(next_point30[0]);
 						pts_x.push_back(next_point60[0]);
