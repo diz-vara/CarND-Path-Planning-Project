@@ -313,6 +313,7 @@ int main() {
 								//TODO: safe distance calculation!!!
 								if (distance > 0 && distance < 40 && relSpeed < -0.1) {
 										slow_down = (30. * 30.) / (distance*distance);
+                    if (slow_down > 10) slow_down = 10;
 								}
 							}
 							else if (laneOther == lane - 1) {
@@ -344,21 +345,21 @@ int main() {
 							else if (bCanGoRight) {
 								lane++;
 							}
-							else if (speed_mps > 0.1) {
+							else {
 								speed_mps -= 0.1 * slow_down;
+                if (speed_mps < 0.2) speed_mps = 0.2;
 							}
 						}
 						else {
-							if (speed_mps < target_speed_mps - 0.1) {
-								speed_mps += 0.2;
-							}
-							if (distances[1] >= 80 && ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft)) )
-								lane = 1;
+								speed_mps += 0.3;
+                if (speed_mps > target_speed_mps)
+                  speed_mps = target_speed_mps;
 						}
 
-						if (speed_mps <= 0)
-							speed_mps = 0.1;
-						std::vector<double> pts_x;
+            if (distances[1] >= 80 && ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft)))
+              lane = 1;
+            
+            std::vector<double> pts_x;
 						std::vector<double> pts_y;
 
 						double ref_x = ego_car.x;
