@@ -311,8 +311,8 @@ int main() {
 								//if (prev_size > 0) vehicle_s -= prev_size * time_step * vehicle_speed;
 
 								//TODO: safe distance calculation!!!
-								if (distance > 0 && distance < 40 && relSpeed < -0.1) {
-										slow_down = (30. * 30.) / (distance*distance);
+								if (distance > 0 && distance < speed_mps * 2 && relSpeed < -0.1) {
+										slow_down = (speed_mps * speed_mps * 3) / (distance*distance);
                     if (slow_down > 10) slow_down = 10;
 								}
 							}
@@ -337,9 +337,9 @@ int main() {
 						if (slow_down) {
 							if (bCanGoLeft && bCanGoRight) {
 								if (distances[0] < 80 && (distances[0] + speeds[0] * 2 < distances[2] + speeds[2] * 2))
-									bCanGoLeft = false;
+									lane = 2;
 							}
-							if (bCanGoLeft ) {
+							else if (bCanGoLeft ) {
 								lane--;
 							}
 							else if (bCanGoRight) {
@@ -351,7 +351,7 @@ int main() {
 							}
 						}
 						else {
-								speed_mps += 0.3;
+								speed_mps += 0.22;
                 if (speed_mps > target_speed_mps)
                   speed_mps = target_speed_mps;
 						}
