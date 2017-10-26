@@ -320,7 +320,7 @@ int main() {
 							}
 						}
           
-            if (distances[lane] > 0 && times[lane] < 1.6 && speeds[lane] < 0.5)
+            if (distances[lane] > 0 && times[lane] < 1.6 && speeds[lane] < 0.1)
 										slow_down = (30. * 30.) / (distances[lane]*distances[lane]);
             if (slow_down > 8) slow_down = 8;
 
@@ -334,7 +334,7 @@ int main() {
 							std::cout << "slow: " << slow_down << ", speed = " << speed_mps << std::endl;
 						}
           
-            bCanGoLeft = bCanGoRight = false;
+            //bCanGoLeft = bCanGoRight = false;
             static double prev_acc;
 						if (slow_down) {
 							if (bCanGoLeft && bCanGoRight) {
@@ -353,9 +353,9 @@ int main() {
 						}
 						else {
               if (prev_acc < 0)
-                prev_acc = 0.1;
+                prev_acc = 0.05;
               else
-                prev_acc = 0.3;
+                prev_acc = 0.25;
 							if (distances[1] >= 80 && ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft)) )
 								lane = 1;
 						}
