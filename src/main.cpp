@@ -297,6 +297,11 @@ int main() {
 						for (Car vehicle : otherCars) {
 							//may need more precise calculations
 							int laneOther = laneFromPosition(vehicle.d);
+              if (laneOther < 0 || laneOther > 2) {
+                std::cout << "Vehicle " << vehicle.id << " has position " << vehicle.d << " - ignore" << std::endl;
+                continue;
+              }
+              
 							double distance = (vehicle.s - ego_car.s);
 							double relSpeed = vehicle.speed_mps - ego_car.speed_mps;
               double timeToCollision = distance/vehicle.speed_mps;
