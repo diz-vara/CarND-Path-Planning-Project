@@ -187,15 +187,10 @@ double norm2(double x, double y)
 
 int canGo(double distance, double relSpeed)
 {
-	if (distance > -9 && distance < 25)
-		return 0;
-	else if (distance > -15 && distance <= -8 && relSpeed > 0)
-		return 0;
-	else if (distance >= 30 && distance < 40 & relSpeed < -0.2)
+	if ((distance+relSpeed) > -9 && (distance+relSpeed) < 25)
 		return 0;
 	else if (distance < 60)
 		return 1;
-
 	return 2;
 }
 
@@ -297,9 +292,14 @@ int main() {
 						for (Car vehicle : otherCars) {
 							//may need more precise calculations
 							int laneOther = laneFromPosition(vehicle.d);
+              if (laneOther < 0 || laneOther > 2) {
+                std::cout << "Vehicle " << vehicle.id << " has position " << vehicle.d << " - ignore" << std::endl;
+                continue;
+              }
+              
 							double distance = (vehicle.s - ego_car.s);
 							double relSpeed = vehicle.speed_mps - ego_car.speed_mps;
-              double timeToCollision = distance/vehicle.speed_mps;
+              double timeToCollision = (distance+relSpeed)/vehicle.speed_mps;
               if (timeToCollision < 0) timeToCollision = 1e9;
               if (timeToCollision < times[laneOther])
                 times[laneOther] = timeToCollision;
@@ -320,8 +320,8 @@ int main() {
 							}
 						}
           
-            if (distances[lane] > 0 && times[lane] < 1.6 && speeds[lane] < 0.1)
-										slow_down = (30. * 30.) / (distances[lane]*distances[lane]);
+            if (distances[lane] > 0 && times[lane] < 1.7 && speeds[lane] < 0.1)
+										slow_down = 1.7 / times[lane];
             if (slow_down > 8) slow_down = 8;
 
 						bCanGoLeft  = bCanGoLeft  && (distances[lane-1] + speeds[lane-1] > speeds[lane] + distances[lane]);
@@ -406,10 +406,6 @@ int main() {
 						pts_y.push_back(next_point30[1]);
 						pts_y.push_back(next_point60[1]);
 						pts_y.push_back(next_point90[1]);
-
-						std::cout << "ref =(" << ref_x << ", " << ref_y << ")" << std::endl;
-						std::cout << "next=(" << next_point30[0] << ", " << next_point30[1] << ")" << std::endl;
-
 
 						for (int i = 0; i < pts_x.size(); ++i) {
 							double shift_x = pts_x[i] - ref_x;
