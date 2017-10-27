@@ -320,8 +320,8 @@ int main() {
 							}
 						}
           
-            if (distances[lane] > 0 && times[lane] < 1.6 && speeds[lane] < 0.1)
-										slow_down = (1.7 * 1.7) / (times[lane]*times[lane]);
+            if (distances[lane] > 0 && times[lane] < 1.7 && speeds[lane] < 0.1)
+										slow_down = 1.7 / times[lane];
             if (slow_down > 8) slow_down = 8;
 
 						bCanGoLeft  = bCanGoLeft  && (distances[lane-1] + speeds[lane-1] > speeds[lane] + distances[lane]);
