@@ -320,7 +320,7 @@ int main() {
 							}
 						}
           
-            if (distances[lane] > 0 && times[lane] < 1.7 && speeds[lane] < 0.1)
+            if (distances[lane] > 0 && times[lane] < 1.7 && speeds[lane] < 0.)
 										slow_down = 1.7 / times[lane];
             if (slow_down > 8) slow_down = 8;
 
@@ -353,7 +353,7 @@ int main() {
                 prev_acc = 0.05;
               else
                 prev_acc = 0.3;
-							if (distances[1] >= 80 && ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft)) )
+							if (distances[1] >= 50 && ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft)) )
 								lane = 1;
 						}
 						double target_speed = speed_mps + prev_acc/2;
