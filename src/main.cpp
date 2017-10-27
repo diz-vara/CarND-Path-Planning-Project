@@ -187,12 +187,12 @@ double norm2(double x, double y)
 
 int canGo(double distance, double relSpeed)
 {
-	if (distance > -9 && distance < 25)
+	if ((distance+relSpeed) > -9 && distance + relSpeed < 20)
 		return 0;
-	else if (distance > -15 && distance <= -8 && relSpeed > 0)
-		return 0;
-	else if (distance >= 30 && distance < 40 & relSpeed < -0.2)
-		return 0;
+	//else if (distance > -15 && distance <= -8 && relSpeed > 0)
+	//	return 0;
+	//else if (distance + relSpeed < 40)
+	//	return 0;
 	else if (distance < 60)
 		return 1;
 
@@ -299,7 +299,7 @@ int main() {
 							int laneOther = laneFromPosition(vehicle.d);
 							double distance = (vehicle.s - ego_car.s);
 							double relSpeed = vehicle.speed_mps - ego_car.speed_mps;
-              double timeToCollision = distance/vehicle.speed_mps;
+              double timeToCollision = (distance+relSpeed)/vehicle.speed_mps ;
               if (timeToCollision < 0) timeToCollision = 1e9;
               if (timeToCollision < times[laneOther])
                 times[laneOther] = timeToCollision;
@@ -321,18 +321,19 @@ int main() {
 						}
           
             if (distances[lane] > 0 && times[lane] < 1.6 && speeds[lane] < 0.1)
-										slow_down = (30. * 30.) / (distances[lane]*distances[lane]);
+										slow_down = (1.7 * 1.7) / (times[lane]*times[lane]);
             if (slow_down > 8) slow_down = 8;
 
 						bCanGoLeft  = bCanGoLeft  && (distances[lane-1] + speeds[lane-1] > speeds[lane] + distances[lane]);
 						bCanGoRight = bCanGoRight && (distances[lane+1] + speeds[lane+1] > speeds[lane] + distances[lane]);
 						if (bAnyCars) {
-							std::cout << "d:" << floor(distances[lane]) <<  " t:" << floor(times[lane]) << " s:" << floor(speeds[lane]) << "; ";
-							std::cout << "slow: " << slow_down << ", V = " << floor(speed_mps) << std::endl;
+              for (int i = 0; i < 3; ++i) 
+							  std::cout << floor(distances[i]) <<  " : " << floor(times[i]) << " : " << floor(speeds[i]) << ";   ";
+							std::cout << std::endl; //"slow: " << slow_down << ", V = " << floor(speed_mps) << std::endl;
 						}
           
             //bCanGoLeft = bCanGoRight = false;
-            static double prev_acc;
+            static double prev_acc(0);
 						if (slow_down) {
 							if (bCanGoLeft && bCanGoRight) {
 								if (distances[0] < 80 && (distances[0] + speeds[0] * 2 < distances[2] + speeds[2] * 2))
@@ -353,7 +354,7 @@ int main() {
                 prev_acc = 0.05;
               else
                 prev_acc = 0.25;
-							if (distances[1] >= 80 && ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft)) )
+							if (distances[1] >= 50 && ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft)) )
 								lane = 1;
 						}
 						speed_mps += prev_acc;
@@ -373,6 +374,7 @@ int main() {
 						double prev_x = ego_car.x;
 						double prev_y = ego_car.y;
 
+          std::cout<< "PrevSize = " << prev_size << std::endl;
 
 						if (prev_size <= 1) {
 							prev_x = ego_car.x - cos(ego_car.yaw);
@@ -381,7 +383,7 @@ int main() {
 						else {
 							ref_x = previous_path_x[prev_size - 1]; //is it a vector? Can I get last el?
 							ref_y = previous_path_y[prev_size - 1]; //is it a vector? Can I get last el?
-							int old = 3;
+							int old = 2;
 							if (prev_size < old) old = prev_size;
 							prev_x = previous_path_x[prev_size - old];
 							prev_y = previous_path_y[prev_size - old];
@@ -393,8 +395,8 @@ int main() {
 						pts_y.push_back(ref_y);
 
             double distance_to_next_point = speed_mps * 2.4;
-            if (distance_to_next_point < 10)
-              distance_to_next_point = 10;
+            if (distance_to_next_point < 30)
+              distance_to_next_point = 30;
 						vector<double> next_point30 = getXY(ego_car.s + distance_to_next_point, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
 						vector<double> next_point60 = getXY(ego_car.s + distance_to_next_point*2, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
 						vector<double> next_point90 = getXY(ego_car.s + distance_to_next_point*3, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
@@ -427,10 +429,9 @@ int main() {
 						vector<double> next_y_vals;
 
 						//all prev points from the last time
-						for (int i = 0; i < previous_path_x.size(); ++i) {
+						for (int i = 0; i < prev_size; ++i) {
 							next_x_vals.push_back(previous_path_x[i]);
 							next_y_vals.push_back(previous_path_y[i]);
-							//if ( i > previous_path_x.size() -3 ) 	std::cout << "p(" << previous_path_x[i] << ", " << previous_path_y[i] << "); ";
 						}
 
 						double target_x = 30.;
@@ -439,9 +440,9 @@ int main() {
 
 						double x_start = 0;
 
-						for (int i = 1; i < 50 - previous_path_x.size(); ++i) {
+						double N = target_dist / (time_step * speed_mps);
+						for (int i = 0; i < 20 - prev_size; ++i) {
 
-							double N = target_dist / (time_step * speed_mps);
 							double x = x_start + target_x / N;
 							double y = s(x);
 
@@ -452,6 +453,8 @@ int main() {
 
 							x_point += ref_x;
 							y_point += ref_y;
+              
+              std::cout << "(" << x_point << ", " << y_point << ")" << std::endl;
 
 							next_x_vals.push_back(x_point);
 							next_y_vals.push_back(y_point);
