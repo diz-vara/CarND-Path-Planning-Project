@@ -272,7 +272,7 @@ int main() {
 
           	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
 						int prev_size = previous_path_x.size();
-						static double speed_mps = 0.02;
+						static double speed_mps = 0.1;
 
 						const double target_speed_mph = 49.6;
 						const double mph_2_mps = 1. / 2.237;
@@ -332,7 +332,7 @@ int main() {
 						}
           
             //bCanGoLeft = bCanGoRight = false;
-            static double prev_acc;
+            static double prev_acc(0);
 						if (slow_down) {
 							if (bCanGoLeft && bCanGoRight) {
 								if (distances[0] < 80 && (distances[0] + speeds[0] * 2 < distances[2] + speeds[2] * 2))
@@ -393,8 +393,8 @@ int main() {
 						pts_y.push_back(ref_y);
 
             double distance_to_next_point = target_speed * 2.4;
-            if (distance_to_next_point < 10)
-              distance_to_next_point = 10;
+            if (distance_to_next_point < 5)
+              distance_to_next_point = 5;
 						vector<double> next_point30 = getXY(ego_car.s + distance_to_next_point, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
 						vector<double> next_point60 = getXY(ego_car.s + distance_to_next_point*2, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
 						vector<double> next_point90 = getXY(ego_car.s + distance_to_next_point*3, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
@@ -407,7 +407,8 @@ int main() {
 						pts_y.push_back(next_point60[1]);
 						pts_y.push_back(next_point90[1]);
 
-						//for (double x : pts_x) std::cout << x << std::endl;
+						std::cout << "ref =(" << ref_x << ", " << ref_y << ")" << std::endl;
+						std::cout << "next=(" << next_point30[0] << ", " << next_point30[1] << ")" << std::endl;
 
 
 						for (int i = 0; i < pts_x.size(); ++i) {
@@ -438,6 +439,8 @@ int main() {
 						double target_dist = norm2(target_x, target_y);
 
 						double x_start = 0;
+
+						std::cout << "speed_mps=" << speed_mps << ", acc=" << prev_acc << std::endl;
 
 						for (int i = 1; i < 50 - previous_path_x.size(); ++i) {
 
