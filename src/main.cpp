@@ -352,16 +352,16 @@ int main() {
               if (prev_acc < 0)
                 prev_acc = 0.05;
               else
-                prev_acc = 0.25;
+                prev_acc = 0.3;
 							if (distances[1] >= 80 && ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft)) )
 								lane = 1;
 						}
-						speed_mps += prev_acc;
+						double target_speed = speed_mps + prev_acc/2;
 
-						if (speed_mps < 0.1)
-							speed_mps = 0.1;
-            if (speed_mps > target_speed_mps) {
-              speed_mps = target_speed_mps;
+						if (target_speed < 0.1)
+							target_speed = 0.1;
+            if (target_speed > target_speed_mps) {
+              target_speed = target_speed_mps;
             }
 
             std::vector<double> pts_x;
@@ -392,7 +392,7 @@ int main() {
 						pts_y.push_back(prev_y);
 						pts_y.push_back(ref_y);
 
-            double distance_to_next_point = speed_mps * 2.4;
+            double distance_to_next_point = target_speed * 2.4;
             if (distance_to_next_point < 10)
               distance_to_next_point = 10;
 						vector<double> next_point30 = getXY(ego_car.s + distance_to_next_point, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
@@ -440,6 +440,12 @@ int main() {
 						double x_start = 0;
 
 						for (int i = 1; i < 50 - previous_path_x.size(); ++i) {
+
+							speed_mps = speed_mps + prev_acc / (50-previous_path_x.size());
+							if (speed_mps < 0.1)
+								speed_mps = 0.1;
+							if (speed_mps > target_speed_mps)
+								speed_mps = target_speed_mps;
 
 							double N = target_dist / (time_step * speed_mps);
 							double x = x_start + target_x / N;
