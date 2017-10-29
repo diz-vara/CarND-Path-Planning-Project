@@ -11,6 +11,7 @@
 
 #include "spline.h"
 
+#include "constants.h"
 #include "car.h"
 
 using namespace std;
@@ -38,7 +39,7 @@ string hasData(string s) {
   return "";
 }
 
-double distance(double x1, double y1, double x2, double y2)
+double distance(double x1, double y1, double x2=0, double y2=0)
 {
 	return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
 }
@@ -163,64 +164,210 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
-const double lane_width = 4.;
 
-double laneToPosition(int nLane)
+//static
+double LaneToPosition(int nLane)
 {
-	if(nLane < 0 || nLane > 2)
+	if (nLane < 0 || nLane > 2)
 		nLane = 0;
 
 	return lane_width / 2. + nLane *lane_width;
 }
 
-int laneFromPosition(double d)
+//static
+int LaneFromPosition(double d)
 {
 	return static_cast<int>(floor(d / lane_width));
 }
 
-std::vector<int> lanesFromPosition(double d)
+//static
+std::vector<int> LanesFromPosition(double d)
 {
 	std::vector<int> result;
 	int lane = static_cast<int>(floor(d / lane_width));
 	result.push_back(lane);
 
-	if (lane > 0 && (laneToPosition(lane) - d) > lane_width / 4)
+	if (lane > 0 && (LaneToPosition(lane) - d) > lane_width / 4)
 		result.push_back(lane - 1);
 
-	if (lane < 2 && (d - laneToPosition(lane)) > lane_width / 4)
+	if (lane < 2 && (d - LaneToPosition(lane)) > lane_width / 4)
 		result.push_back(lane + 1);
 
 	return result;
 }
 
-
-
-//(x,y) vector norm 
-double norm2(double x, double y)
+int CanGo(double distance, double relSpeed)
 {
-	return sqrt(x*x + y*y);
-}
-
-
-int canGo(double distance, double relSpeed)
-{
-	if ((distance+relSpeed) > -9 && (distance+relSpeed) < 25)
+	if ((distance + relSpeed) > -9 && (distance + relSpeed) < 25)
 		return 0;
 	else if (distance < 60)
 		return 1;
 	return 2;
 }
 
+
+void PlanLaneAndSpeed(CarState& state, const std::vector<Car>& otherCars)
+{
+	int lane = state.lane;
+	bool bCanGoLeft = (lane > 0);
+	bool bCanGoRight = (lane < 2);
+	bool bAnyCars = false;
+
+	double distances[3] = { 999., 999., 999. };
+	double speeds[3] = { 999., 999., 999. };
+	double times[3] = { 999., 999., 999. };
+	for (Car vehicle : otherCars) {
+		//may need more precise calculations
+		std::vector<int> lanesOther = LanesFromPosition(vehicle.d);
+		for (int laneOther : lanesOther) {
+			if (laneOther < 0 || laneOther > 2) {  //ignore invalid vehicles
+				continue;
+			}
+
+			double distance = (vehicle.s - state.s);
+			double relSpeed = vehicle.speed_mps - state.speed_mps;
+			double timeToCollision = (distance + relSpeed) / vehicle.speed_mps;
+			if (timeToCollision < 0) timeToCollision = 1e9;
+			if (timeToCollision < times[laneOther])
+				times[laneOther] = timeToCollision;
+			if (distance > 0) {
+				if (distance < distances[laneOther])
+					distances[laneOther] = distance;
+				if (relSpeed < speeds[laneOther])
+					speeds[laneOther] = relSpeed;
+			}
+			if (distance < 60 && distance > -15) {
+				bAnyCars = true;
+			}
+			if (laneOther == lane - 1) {
+				bCanGoLeft = bCanGoLeft && (CanGo(distance, relSpeed) > 0);
+			}
+			else if (laneOther == lane + 1) {
+				bCanGoRight = bCanGoRight && (CanGo(distance, relSpeed) > 0);
+			}
+		}
+
+	}
+
+	double slow_down(0);
+	if (distances[lane] > 0 && times[lane] < 1.7 && speeds[lane] < 0.)
+		slow_down = 1.7 / times[lane];
+	if (slow_down > 8) slow_down = 8;
+
+
+	//bCanGoLeft = bCanGoRight = false;
+
+	if (slow_down > 0.) {
+		if (bCanGoLeft && bCanGoRight) {
+			if (distances[0] < 80 && (distances[0] + speeds[0] * 2 < distances[2] + speeds[2] * 2))
+				bCanGoLeft = false;
+		}
+		if (bCanGoLeft) {
+			lane--;
+		}
+		else if (bCanGoRight) {
+			lane++;
+		}
+		else {
+			state.acceleration = -0.1 * slow_down;
+		}
+	}
+	else {
+		if (state.acceleration < 0)
+			state.acceleration = 0.05;
+		else
+			state.acceleration = 0.25;
+		if (distances[1] >= 50 && ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft)))
+			lane = 1;
+	}
+	state.lane = lane;
+	if (0 && bAnyCars) {
+		std::cout << "d:" << floor(distances[lane]) << " t:" << floor(times[lane]) << " s:" << floor(speeds[lane]) << "; ";
+		std::cout << "slow: " << slow_down << ", V = " << floor(state.speed_mps) << std::endl;
+	}
+
+}
+
+typedef struct {
+	std::vector<double> pts_x;
+	std::vector<double> pts_y;
+	size_t size;
+	double ref_x;
+	double ref_y;
+	double ref_yaw;
+} Path;
+
+typedef struct {
+	vector<double> x;
+	vector<double> y;
+	vector<double> s;
+	vector<double> dx;
+	vector<double> dy;
+
+} Map_waipoints;
+
+
+Path CalculatePath(Car ego_car, CarState state, Path previousPath, Map_waipoints map)
+{
+	Path points;
+
+	points.ref_x = ego_car.x;
+	points.ref_y = ego_car.y;
+	points.ref_yaw = deg2rad(ego_car.yaw);
+	double prev_x = ego_car.x;
+	double prev_y = ego_car.y;
+
+
+	if (previousPath.size <= 1) {
+		prev_x = ego_car.x - cos(ego_car.yaw);
+		prev_y = ego_car.y - sin(ego_car.yaw);
+	}
+	else {
+		points.ref_x = previousPath.pts_x[previousPath.size - 1]; //is it a vector? Can I get last el?
+		points.ref_y = previousPath.pts_y[previousPath.size - 1]; //is it a vector? Can I get last el?
+		prev_x = previousPath.pts_x[previousPath.size - 2];
+		prev_y = previousPath.pts_y[previousPath.size - 2];
+		points.ref_yaw = atan2(points.ref_y - prev_y, points.ref_x - prev_x);
+	}
+
+	//std::cout << "(" << prev_x << ", " << prev_y << "); ";
+	//std::cout << "(" << points.ref_x << ", " << points.ref_y << "); " << std::endl;
+
+	points.pts_x.push_back(prev_x);
+	points.pts_x.push_back(points.ref_x);
+	points.pts_y.push_back(prev_y);
+	points.pts_y.push_back(points.ref_y);
+
+	double distance_to_next_point = state.speed_mps * 2.4;
+	if (distance_to_next_point < 5)
+		distance_to_next_point = 5;
+	vector<double> next_point30 = getXY(ego_car.s + distance_to_next_point, LaneToPosition(state.lane), map.s, map.x, map.y);
+	vector<double> next_point60 = getXY(ego_car.s + distance_to_next_point * 2, LaneToPosition(state.lane), map.s, map.x, map.y);
+	vector<double> next_point90 = getXY(ego_car.s + distance_to_next_point * 3, LaneToPosition(state.lane), map.s, map.x, map.y);
+
+	points.pts_x.push_back(next_point30[0]);
+	points.pts_x.push_back(next_point60[0]);
+	points.pts_x.push_back(next_point90[0]);
+
+	points.pts_y.push_back(next_point30[1]);
+	points.pts_y.push_back(next_point60[1]);
+	points.pts_y.push_back(next_point90[1]);
+
+	for (int i = 0; i < points.pts_x.size(); ++i) {
+		double shift_x = points.pts_x[i] - points.ref_x;
+		double shift_y = points.pts_y[i] - points.ref_y;
+
+		points.pts_x[i] = (shift_x * cos(0 - points.ref_yaw) - shift_y * sin(0 - points.ref_yaw));
+		points.pts_y[i] = (shift_x * sin(0 - points.ref_yaw) + shift_y * cos(0 - points.ref_yaw));
+	}
+	return points;
+}
+
 int main() {
   uWS::Hub h;
 
   // Load up map values for waypoint's x,y,s and d normalized normal vectors
-  vector<double> map_waypoints_x;
-  vector<double> map_waypoints_y;
-  vector<double> map_waypoints_s;
-  vector<double> map_waypoints_dx;
-  vector<double> map_waypoints_dy;
-
+	Map_waipoints map;
   // Waypoint map to read from
   string map_file_ = "../data/highway_map.csv";
   // The max s value before wrapping around the track back to 0
@@ -241,14 +388,14 @@ int main() {
   	iss >> s;
   	iss >> d_x;
   	iss >> d_y;
-  	map_waypoints_x.push_back(x);
-  	map_waypoints_y.push_back(y);
-  	map_waypoints_s.push_back(s);
-  	map_waypoints_dx.push_back(d_x);
-  	map_waypoints_dy.push_back(d_y);
+  	map.x.push_back(x);
+  	map.y.push_back(y);
+  	map.s.push_back(s);
+  	map.dx.push_back(d_x);
+  	map.dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&map](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -269,222 +416,101 @@ int main() {
 					json obj = j[1];
         	// Ego - car's localization Data
 					Car ego_car(obj);
-          	// Previous path data given to the Planner
-          	auto previous_path_x = j[1]["previous_path_x"];
-          	auto previous_path_y = j[1]["previous_path_y"];
-          	// Previous path's end s and d values 
-          	double end_path_s = j[1]["end_path_s"];
-          	double end_path_d = j[1]["end_path_d"];
 
-          	// Sensor Fusion Data, a list of all other cars on the same side of the road.
-          	auto sensor_fusion = obj["sensor_fusion"];
+					Path previous_path;
 
-          	json msgJson;
+          // Previous path data given to the Planner
+          std::vector<double> previous_path_x = j[1]["previous_path_x"];
+					std::vector<double> previous_path_y = j[1]["previous_path_y"];
+					previous_path.pts_x = previous_path_x;
+					previous_path.pts_y = previous_path_y;
+					previous_path.size = previous_path_x.size();
 
-
-          	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
-						int prev_size = previous_path_x.size();
-						static double speed_mps = 0.1;
-
-						const double target_speed_mph = 49.6;
-						const double mph_2_mps = 1. / 2.237;
-						const double target_speed_mps = target_speed_mph / 2.237;
-						const double time_step = 0.02;
-						static int lane = 1;
-
-						double slow_down(0.);
-						std::vector<Car> otherCars;
-						for (int i = 0; i < sensor_fusion.size(); ++i) {
-							otherCars.push_back(Car(sensor_fusion[i]));
-						}
-
-						bool bCanGoLeft = (lane > 0) && (lane == laneFromPosition(ego_car.d));
-						bool bCanGoRight = (lane < 2) && (lane == laneFromPosition(ego_car.d));
+          // Previous path's end s and d values 
+          double end_path_s = j[1]["end_path_s"];
+          double end_path_d = j[1]["end_path_d"];
 
 
-						bool bAnyCars(false);
-						double distances[3] = {999., 999., 999.};	
-						double speeds[3] = { 999., 999., 999. };
-						double times[3] = { 999., 999., 999. };
-						for (Car vehicle : otherCars) {
-							//may need more precise calculations
-							std::vector<int> lanesOther = lanesFromPosition(vehicle.d);
-							for (int laneOther : lanesOther) {
-								if (laneOther < 0 || laneOther > 2) {  //ignore invalid vehicles
-									continue;
-								}
+          // Sensor Fusion Data, a list of all other cars on the same side of the road.
+          auto sensor_fusion = obj["sensor_fusion"];
 
-								double distance = (vehicle.s - ego_car.s);
-								double relSpeed = vehicle.speed_mps - ego_car.speed_mps;
-								double timeToCollision = (distance + relSpeed) / vehicle.speed_mps;
-								if (timeToCollision < 0) timeToCollision = 1e9;
-								if (timeToCollision < times[laneOther])
-									times[laneOther] = timeToCollision;
-								if (distance > 0) {
-									if (distance < distances[laneOther])
-										distances[laneOther] = distance;
-									if (relSpeed < speeds[laneOther])
-										speeds[laneOther] = relSpeed;
-								}
-								if (distance < 60 && distance > -15) {
-									bAnyCars = true;
-								}
-								if (laneOther == lane - 1) {
-									bCanGoLeft = bCanGoLeft && (canGo(distance, relSpeed) > 0);
-								}
-								else if (laneOther == lane + 1) {
-									bCanGoRight = bCanGoRight && (canGo(distance, relSpeed) > 0);
-								}
-							}
-						}
-          
-            if (distances[lane] > 0 && times[lane] < 1.7 && speeds[lane] < 0.)
-										slow_down = 1.7 / times[lane];
-            if (slow_down > 8) slow_down = 8;
-
-						//bCanGoLeft  = bCanGoLeft  && (times[lane] > 2);
-						//bCanGoRight = bCanGoRight && (times[lane] > 2);
-						if (0 && bAnyCars) {
-							std::cout << "d:" << floor(distances[lane]) <<  " t:" << floor(times[lane]) << " s:" << floor(speeds[lane]) << "; ";
-							std::cout << "slow: " << slow_down << ", V = " << floor(speed_mps) << std::endl;
-						}
-          
-            //bCanGoLeft = bCanGoRight = false;
-            static double prev_acc(0);
-						if (slow_down > 0.) {
-							if (bCanGoLeft && bCanGoRight) {
-								if (distances[0] < 80 && (distances[0] + speeds[0] * 2 < distances[2] + speeds[2] * 2))
-									bCanGoLeft = false;
-							}
-							if (bCanGoLeft ) {
-								lane--;
-							}
-							else if (bCanGoRight) {
-								lane++;
-							}
-							else {
-                prev_acc = -0.1 * slow_down;
-							}
-						}
-						else {
-              if (prev_acc < 0)
-                prev_acc = 0.05;
-              else
-                prev_acc = 0.25;
-							if (distances[1] >= 50 && ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft)) )
-								lane = 1;
-						}
-						double target_speed = speed_mps + prev_acc/2;
-
-						if (target_speed < 0.1)
-							target_speed = 0.1;
-            if (target_speed > target_speed_mps) {
-              target_speed = target_speed_mps;
-            }
-
-            std::vector<double> pts_x;
-						std::vector<double> pts_y;
-
-						double ref_x = ego_car.x;
-						double ref_y = ego_car.y;
-						double ref_yaw = deg2rad(ego_car.yaw);
-						double prev_x = ego_car.x;
-						double prev_y = ego_car.y;
+          json msgJson;
 
 
-						if (prev_size <= 1) {
-							prev_x = ego_car.x - cos(ego_car.yaw);
-							prev_y = ego_car.y - sin(ego_car.yaw);
-						}
-						else {
-							ref_x = previous_path_x[prev_size - 1]; //is it a vector? Can I get last el?
-							ref_y = previous_path_y[prev_size - 1]; //is it a vector? Can I get last el?
-							prev_x = previous_path_x[prev_size - 2];
-							prev_y = previous_path_y[prev_size - 2];
-							ref_yaw = atan2(ref_y - prev_y, ref_x - prev_x);
-						}
-						pts_x.push_back(prev_x);
-						pts_x.push_back(ref_x);
-						pts_y.push_back(prev_y);
-						pts_y.push_back(ref_y);
-
-            double distance_to_next_point = target_speed * 2.4;
-            if (distance_to_next_point < 5)
-              distance_to_next_point = 5;
-						vector<double> next_point30 = getXY(ego_car.s + distance_to_next_point, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
-						vector<double> next_point60 = getXY(ego_car.s + distance_to_next_point*2, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
-						vector<double> next_point90 = getXY(ego_car.s + distance_to_next_point*3, laneToPosition(lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
-
-						pts_x.push_back(next_point30[0]);
-						pts_x.push_back(next_point60[0]);
-						pts_x.push_back(next_point90[0]);
-
-						pts_y.push_back(next_point30[1]);
-						pts_y.push_back(next_point60[1]);
-						pts_y.push_back(next_point90[1]);
-
-						for (int i = 0; i < pts_x.size(); ++i) {
-							double shift_x = pts_x[i] - ref_x;
-							double shift_y = pts_y[i] - ref_y;
-
-							pts_x[i] = (shift_x * cos(0 - ref_yaw) - shift_y * sin(0 - ref_yaw));
-							pts_y[i] = (shift_x * sin(0 - ref_yaw) + shift_y * cos(0 - ref_yaw));
-						}
-
-						//for (double x : pts_x) 	std::cout << x << std::endl;
-
-						tk::spline s;
-						s.set_points(pts_x, pts_y);
-
-						vector<double> next_x_vals;
-						vector<double> next_y_vals;
-
-						//all prev points from the last time
-						for (int i = 0; i < prev_size; ++i) {
-							next_x_vals.push_back(previous_path_x[i]);
-							next_y_vals.push_back(previous_path_y[i]);
-						}
+					static CarState carState;
+					carState.s = ego_car.s;
 
 
-						double target_step = speed_mps * time_step;
-						double dist = distance(pts_x[0], pts_y[0], pts_x[1], pts_y[1]);
-						double x_step = (pts_x[1] - pts_x[0])*target_step / dist;
+					std::vector<Car> otherCars;
+					for (int i = 0; i < sensor_fusion.size(); ++i) {
+						otherCars.push_back(Car(sensor_fusion[i]));
+					}
 
-						double x0 = 0;
+					//estimates next lane position and speed
+					PlanLaneAndSpeed(carState, otherCars);
+					std::cout << "carState: " << carState.acceleration << ", " << carState.speed_mps << std::endl;
 
-						//std::cout << "speed_mps=" << speed_mps << ", acc=" << prev_acc << std::endl;
-						std::cout << "prev_size=" << prev_size << ", x_step=" << x_step << std::endl;
+					//Calculate path including two old point and three future poits
+					Path points = CalculatePath(ego_car, carState, previous_path, map);
+	
+					//for (double x : points.pts_x) 	std::cout << x << std::endl;
 
-						double y0 = s(x0);
-						for (int i = 0; i < 50 - prev_size; ++i) {
+					//build spline
+					tk::spline s;
+					s.set_points(points.pts_x, points.pts_y);
 
-							speed_mps = speed_mps + prev_acc / (50-prev_size );
-							target_step = speed_mps * time_step;
-							if (speed_mps < 0.1)
-								speed_mps = 0.1;
-							if (speed_mps > target_speed_mps)
-								speed_mps = target_speed_mps;
+
+					//all prev points from the last time
+					Path newPath = previous_path;
+
+					//TODO: last unrefactored 
+					if (carState.speed_mps <= 0)
+						carState.speed_mps = 0.1;
+
+					double target_step = carState.speed_mps * time_step;
+					double dist = distance(points.pts_x[0], points.pts_y[0], points.pts_x[1], points.pts_y[1]);
+					double x_step = (points.pts_x[1] - points.pts_x[0])*target_step / dist;
+
+
+					std::cout << "speed_mps=" << carState.speed_mps << ", acc=" << carState.acceleration << std::endl;
+					std::cout << "prev_size=" << previous_path.size << ", x_step=" << x_step << std::endl;
+
+
+
+					double x0 = 0;
+					double y0 = s(x0);
+
+
+						for (int i = 0; i < 50 - previous_path.size; ++i) {
+
+							carState.speed_mps = carState.speed_mps + carState.acceleration / (50- previous_path.size);
+							target_step = carState.speed_mps * time_step;
+							if (carState.speed_mps < 0.1)
+								carState.speed_mps = 0.1;
+							if (carState.speed_mps > target_speed_mps)
+								carState.speed_mps = target_speed_mps;
 
 
 							double x1 = x0 + x_step;
 							double y1 = s(x1);
+							//std::cout << "[" << x1 << ", " << y1 << "]" << std::endl;
 							double dist = distance(x0, y0, x1, y1);
 
 							x_step = x_step*target_step / dist;
 							x0 = x1;
 							y0 = y1;
-							double x_point = x1 * cos(ref_yaw) - y1 * sin(ref_yaw);
-							double y_point = x1 * sin(ref_yaw) + y1 * cos(ref_yaw);
+							double x_point = x1 * cos(points.ref_yaw) - y1 * sin(points.ref_yaw);
+							double y_point = x1 * sin(points.ref_yaw) + y1 * cos(points.ref_yaw);
 
-							x_point += ref_x;
-							y_point += ref_y;
+							x_point += points.ref_x;
+							y_point += points.ref_y;
 
-							next_x_vals.push_back(x_point);
-							next_y_vals.push_back(y_point);
+							newPath.pts_x.push_back(x_point);
+							newPath.pts_y.push_back(y_point);
 						}
 		
-          	msgJson["next_x"] = next_x_vals;
-          	msgJson["next_y"] = next_y_vals;
+						msgJson["next_x"] = newPath.pts_x;
+						msgJson["next_y"] = newPath.pts_y;
 
           	auto msg = "42[\"control\","+ msgJson.dump()+"]";
 

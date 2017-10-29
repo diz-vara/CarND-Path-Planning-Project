@@ -4,6 +4,7 @@
 #define CAR_H
 
 #include "json.hpp"
+#include "constants.h"
 
 class Car {
 
@@ -15,6 +16,7 @@ public:
 	double vy;
 	double s;
 	double d;
+	int lane;
 	double yaw;
 	double speed_mps;
 
@@ -29,6 +31,7 @@ public:
 			s = obj[5];
 			d = obj[6];
 			speed_mps = sqrt(vx*vx + vy*vy);
+			
 		}
 		else if (obj.type() == nlohmann::json::value_t::object) {
 			id = -42; //ego-car
@@ -46,7 +49,20 @@ public:
 		}
 	}
 
+
 };
+
+class CarState {
+public:
+	int lane;
+	double s;
+	double speed_mps;
+	double acceleration;
+
+	CarState() : lane(1), s(0), speed_mps(0), acceleration(0) {}
+
+};
+
 
 
 #endif
