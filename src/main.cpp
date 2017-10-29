@@ -332,7 +332,7 @@ int main() {
           
             //bCanGoLeft = bCanGoRight = false;
             static double prev_acc(0);
-						if (slow_down) {
+						if (slow_down > 0.2) {
 							if (bCanGoLeft && bCanGoRight) {
 								if (distances[0] < 80 && (distances[0] + speeds[0] * 2 < distances[2] + speeds[2] * 2))
 									bCanGoLeft = false;
@@ -380,10 +380,8 @@ int main() {
 						else {
 							ref_x = previous_path_x[prev_size - 1]; //is it a vector? Can I get last el?
 							ref_y = previous_path_y[prev_size - 1]; //is it a vector? Can I get last el?
-							int old = 3;
-							if (prev_size < old) old = prev_size;
-							prev_x = previous_path_x[prev_size - old];
-							prev_y = previous_path_y[prev_size - old];
+							prev_x = previous_path_x[prev_size - 2];
+							prev_y = previous_path_y[prev_size - 2];
 							ref_yaw = atan2(ref_y - prev_y, ref_x - prev_x);
 						}
 						pts_x.push_back(prev_x);
@@ -414,7 +412,7 @@ int main() {
 							pts_y[i] = (shift_x * sin(0 - ref_yaw) + shift_y * cos(0 - ref_yaw));
 						}
 
-						for (double x : pts_x) 	std::cout << x << std::endl;
+						//for (double x : pts_x) 	std::cout << x << std::endl;
 
 						tk::spline s;
 						s.set_points(pts_x, pts_y);
@@ -430,15 +428,8 @@ int main() {
 
 
 						double target_step = speed_mps * time_step;
-						double x_step = target_step;
-						if (prev_size >= 2000) {
-							double x0 = previous_path_x[prev_size - 2];
-							double x1 = previous_path_x[prev_size - 1];
-							double y0 = previous_path_y[prev_size - 2];
-							double y1 = previous_path_y[prev_size - 1];
-							double dist = distance(x0, y0, x1, y1);
-							x_step = (x1 - x0)*target_step / dist;
-						}
+						double dist = distance(pts_x[0], pts_y[0], pts_x[1], pts_y[1]);
+						double x_step = (pts_x[1] - pts_x[0])*target_step / dist;
 
 						double x0 = 0;
 
