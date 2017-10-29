@@ -342,8 +342,8 @@ int main() {
 										slow_down = 1.7 / times[lane];
             if (slow_down > 8) slow_down = 8;
 
-						bCanGoLeft  = bCanGoLeft  && (distances[lane-1] + speeds[lane-1] > speeds[lane] + distances[lane]);
-						bCanGoRight = bCanGoRight && (distances[lane+1] + speeds[lane+1] > speeds[lane] + distances[lane]);
+						//bCanGoLeft  = bCanGoLeft  && (times[lane] > 2);
+						//bCanGoRight = bCanGoRight && (times[lane] > 2);
 						if (0 && bAnyCars) {
 							std::cout << "d:" << floor(distances[lane]) <<  " t:" << floor(times[lane]) << " s:" << floor(speeds[lane]) << "; ";
 							std::cout << "slow: " << slow_down << ", V = " << floor(speed_mps) << std::endl;
@@ -351,7 +351,7 @@ int main() {
           
             //bCanGoLeft = bCanGoRight = false;
             static double prev_acc(0);
-						if (slow_down > 0.2) {
+						if (slow_down > 0.) {
 							if (bCanGoLeft && bCanGoRight) {
 								if (distances[0] < 80 && (distances[0] + speeds[0] * 2 < distances[2] + speeds[2] * 2))
 									bCanGoLeft = false;
