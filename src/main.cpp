@@ -292,8 +292,7 @@ int main() {
 						for (Car vehicle : otherCars) {
 							//may need more precise calculations
 							int laneOther = laneFromPosition(vehicle.d);
-              if (laneOther < 0 || laneOther > 2) {
-                std::cout << "Vehicle " << vehicle.id << " has position " << vehicle.d << " - ignore" << std::endl;
+              if (laneOther < 0 || laneOther > 2) {  //ignore invalid vehicles
                 continue;
               }
               
@@ -326,7 +325,7 @@ int main() {
 
 						bCanGoLeft  = bCanGoLeft  && (distances[lane-1] + speeds[lane-1] > speeds[lane] + distances[lane]);
 						bCanGoRight = bCanGoRight && (distances[lane+1] + speeds[lane+1] > speeds[lane] + distances[lane]);
-						if (bAnyCars) {
+						if (0 && bAnyCars) {
 							std::cout << "d:" << floor(distances[lane]) <<  " t:" << floor(times[lane]) << " s:" << floor(speeds[lane]) << "; ";
 							std::cout << "slow: " << slow_down << ", V = " << floor(speed_mps) << std::endl;
 						}
@@ -352,7 +351,7 @@ int main() {
               if (prev_acc < 0)
                 prev_acc = 0.05;
               else
-                prev_acc = 0.3;
+                prev_acc = 0.25;
 							if (distances[1] >= 50 && ((lane == 0 && bCanGoRight) || (lane == 2 && bCanGoLeft)) )
 								lane = 1;
 						}
@@ -415,7 +414,7 @@ int main() {
 							pts_y[i] = (shift_x * sin(0 - ref_yaw) + shift_y * cos(0 - ref_yaw));
 						}
 
-						//for (double x : pts_x) 	std::cout << x << std::endl;
+						for (double x : pts_x) 	std::cout << x << std::endl;
 
 						tk::spline s;
 						s.set_points(pts_x, pts_y);
@@ -424,36 +423,48 @@ int main() {
 						vector<double> next_y_vals;
 
 						//all prev points from the last time
-						for (int i = 0; i < previous_path_x.size(); ++i) {
+						for (int i = 0; i < prev_size; ++i) {
 							next_x_vals.push_back(previous_path_x[i]);
 							next_y_vals.push_back(previous_path_y[i]);
-							//if ( i > previous_path_x.size() -3 ) 	std::cout << "p(" << previous_path_x[i] << ", " << previous_path_y[i] << "); ";
 						}
 
-						double target_x = 30.;
-						double target_y = s(target_x);
-						double target_dist = norm2(target_x, target_y);
 
-						double x_start = 0;
+						double target_step = speed_mps * time_step;
+						double x_step = target_step;
+						if (prev_size >= 2000) {
+							double x0 = previous_path_x[prev_size - 2];
+							double x1 = previous_path_x[prev_size - 1];
+							double y0 = previous_path_y[prev_size - 2];
+							double y1 = previous_path_y[prev_size - 1];
+							double dist = distance(x0, y0, x1, y1);
+							x_step = (x1 - x0)*target_step / dist;
+						}
 
-						std::cout << "speed_mps=" << speed_mps << ", acc=" << prev_acc << std::endl;
+						double x0 = 0;
 
-						for (int i = 1; i < 50 - previous_path_x.size(); ++i) {
+						//std::cout << "speed_mps=" << speed_mps << ", acc=" << prev_acc << std::endl;
+						std::cout << "prev_size=" << prev_size << ", x_step=" << x_step << std::endl;
 
-							speed_mps = speed_mps + prev_acc / (50-previous_path_x.size());
+						double y0 = s(x0);
+						for (int i = 0; i < 50 - prev_size; ++i) {
+
+							speed_mps = speed_mps + prev_acc / (50-prev_size );
+							target_step = speed_mps * time_step;
 							if (speed_mps < 0.1)
 								speed_mps = 0.1;
 							if (speed_mps > target_speed_mps)
 								speed_mps = target_speed_mps;
 
-							double N = target_dist / (time_step * speed_mps);
-							double x = x_start + target_x / N;
-							double y = s(x);
 
-							x_start = x;
+							double x1 = x0 + x_step;
+							double y1 = s(x1);
+							double dist = distance(x0, y0, x1, y1);
 
-							double x_point = x * cos(ref_yaw) - y * sin(ref_yaw);
-							double y_point = x * sin(ref_yaw) + y * cos(ref_yaw);
+							x_step = x_step*target_step / dist;
+							x0 = x1;
+							y0 = y1;
+							double x_point = x1 * cos(ref_yaw) - y1 * sin(ref_yaw);
+							double y_point = x1 * sin(ref_yaw) + y1 * cos(ref_yaw);
 
 							x_point += ref_x;
 							y_point += ref_y;
