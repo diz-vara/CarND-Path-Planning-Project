@@ -178,6 +178,23 @@ int laneFromPosition(double d)
 	return static_cast<int>(floor(d / lane_width));
 }
 
+std::vector<int> lanesFromPosition(double d)
+{
+	std::vector<int> result;
+	int lane = static_cast<int>(floor(d / lane_width));
+	result.push_back(lane);
+
+	if (lane > 0 && (laneToPosition(lane) - d) > lane_width / 4)
+		result.push_back(lane - 1);
+
+	if (lane < 2 && (d - laneToPosition(lane)) > lane_width / 4)
+		result.push_back(lane + 1);
+
+	return result;
+}
+
+
+
 //(x,y) vector norm 
 double norm2(double x, double y)
 {
@@ -291,31 +308,33 @@ int main() {
 						double times[3] = { 999., 999., 999. };
 						for (Car vehicle : otherCars) {
 							//may need more precise calculations
-							int laneOther = laneFromPosition(vehicle.d);
-              if (laneOther < 0 || laneOther > 2) {  //ignore invalid vehicles
-                continue;
-              }
-              
-							double distance = (vehicle.s - ego_car.s);
-							double relSpeed = vehicle.speed_mps - ego_car.speed_mps;
-              double timeToCollision = (distance+relSpeed)/vehicle.speed_mps;
-              if (timeToCollision < 0) timeToCollision = 1e9;
-              if (timeToCollision < times[laneOther])
-                times[laneOther] = timeToCollision;
-							if (distance > 0) {
-								if (distance < distances[laneOther])
-									distances[laneOther] = distance;
-								if (relSpeed < speeds[laneOther])
-									speeds[laneOther] = relSpeed;
-							}
-							if (distance < 60 && distance > -15) {
-								bAnyCars = true;
-							}
-							if (laneOther == lane - 1) {
-								bCanGoLeft = bCanGoLeft && (canGo(distance, relSpeed) > 0);
-							}
-							else if (laneOther == lane + 1) {
-								bCanGoRight = bCanGoRight && (canGo(distance, relSpeed) > 0);
+							std::vector<int> lanesOther = lanesFromPosition(vehicle.d);
+							for (int laneOther : lanesOther) {
+								if (laneOther < 0 || laneOther > 2) {  //ignore invalid vehicles
+									continue;
+								}
+
+								double distance = (vehicle.s - ego_car.s);
+								double relSpeed = vehicle.speed_mps - ego_car.speed_mps;
+								double timeToCollision = (distance + relSpeed) / vehicle.speed_mps;
+								if (timeToCollision < 0) timeToCollision = 1e9;
+								if (timeToCollision < times[laneOther])
+									times[laneOther] = timeToCollision;
+								if (distance > 0) {
+									if (distance < distances[laneOther])
+										distances[laneOther] = distance;
+									if (relSpeed < speeds[laneOther])
+										speeds[laneOther] = relSpeed;
+								}
+								if (distance < 60 && distance > -15) {
+									bAnyCars = true;
+								}
+								if (laneOther == lane - 1) {
+									bCanGoLeft = bCanGoLeft && (canGo(distance, relSpeed) > 0);
+								}
+								else if (laneOther == lane + 1) {
+									bCanGoRight = bCanGoRight && (canGo(distance, relSpeed) > 0);
+								}
 							}
 						}
           
