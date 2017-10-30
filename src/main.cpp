@@ -19,10 +19,6 @@ using namespace std;
 // for convenience
 using json = nlohmann::json;
 
-// For converting back and forth between radians and degrees.
-constexpr double pi() { return M_PI; }
-double deg2rad(double x) { return x * pi() / 180; }
-double rad2deg(double x) { return x * 180 / pi(); }
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -205,7 +201,8 @@ int CanGo(double distance, double relSpeed)
 	return 2;
 }
 
-
+//defies future car position (lane) and speed
+// NB! Updates CarState!!!
 void PlanLaneAndSpeed(CarState& state, const std::vector<Car>& otherCars)
 {
 	int lane = state.lane;
@@ -249,6 +246,7 @@ void PlanLaneAndSpeed(CarState& state, const std::vector<Car>& otherCars)
 
 	}
 
+
 	double slow_down(0);
 	if (distances[lane] > 0 && times[lane] < 1.7 && speeds[lane] < 0.)
 		slow_down = 1.7 / times[lane];
@@ -290,42 +288,41 @@ void PlanLaneAndSpeed(CarState& state, const std::vector<Car>& otherCars)
 
 
 //given previous path and predicted state, calculate points for building smooth path
-Path CalculatePoints(Car ego_car, CarState state, Path previousPath, Map_waipoints map)
+Path CalculatePoints(CarState & state, Path previousPath, Map_waipoints map)
 {
 	Path points;
 
-	points.ref_x = ego_car.x;
-	points.ref_y = ego_car.y;
-	points.ref_yaw = deg2rad(ego_car.yaw);
-	double prev_x = ego_car.x;
-	double prev_y = ego_car.y;
+	double prev_x = state.x;
+	double prev_y = state.y;
 
 	//no previous points - extrapolate old from the current state
 	if (previousPath.size <= 1) {
-		prev_x = ego_car.x - cos(ego_car.yaw);
-		prev_y = ego_car.y - sin(ego_car.yaw);
+		prev_x = state.x - cos(state.yaw);
+		prev_y = state.y - sin(state.yaw);
 	}
 	else {
-		points.ref_x = previousPath.pts_x[previousPath.size - 1]; //is it a vector? Can I get last el?
-		points.ref_y = previousPath.pts_y[previousPath.size - 1]; //is it a vector? Can I get last el?
+		state.x = previousPath.pts_x[previousPath.size - 1]; //is it a vector? Can I get last el?
+		state.y = previousPath.pts_y[previousPath.size - 1]; //is it a vector? Can I get last el?
 		prev_x = previousPath.pts_x[previousPath.size - 2];
 		prev_y = previousPath.pts_y[previousPath.size - 2];
-		points.ref_yaw = atan2(points.ref_y - prev_y, points.ref_x - prev_x);
+		state.yaw = atan2(state.y - prev_y, state.x - prev_x);
 	}
 
 	//two old points
 	points.pts_x.push_back(prev_x);
-	points.pts_x.push_back(points.ref_x);
+	points.pts_x.push_back(state.x);
 	points.pts_y.push_back(prev_y);
-	points.pts_y.push_back(points.ref_y);
+	points.pts_y.push_back(state.y);
+
+	//std::cout << state.x << ", " << state.y << ", " << state.yaw << std::endl;
 
 	//define three points in the future (depending on current speed)
 	double distance_to_next_point = state.speed_mps * 2.4;
 	if (distance_to_next_point < 5)
 		distance_to_next_point = 5;
-	vector<double> next_point1 = getXY(ego_car.s + distance_to_next_point, LaneToPosition(state.lane), map.s, map.x, map.y);
-	vector<double> next_point2 = getXY(ego_car.s + distance_to_next_point * 2, LaneToPosition(state.lane), map.s, map.x, map.y);
-	vector<double> next_point3 = getXY(ego_car.s + distance_to_next_point * 3, LaneToPosition(state.lane), map.s, map.x, map.y);
+	vector<double> next_point1 = getXY(state.s + distance_to_next_point, LaneToPosition(state.lane), map.s, map.x, map.y);
+	vector<double> next_point2 = getXY(state.s + distance_to_next_point * 2, LaneToPosition(state.lane), map.s, map.x, map.y);
+	vector<double> next_point3 = getXY(state.s + distance_to_next_point * 3, LaneToPosition(state.lane), map.s, map.x, map.y);
 
 	points.pts_x.push_back(next_point1[0]);
 	points.pts_x.push_back(next_point2[0]);
@@ -336,15 +333,17 @@ Path CalculatePoints(Car ego_car, CarState state, Path previousPath, Map_waipoin
 	points.pts_y.push_back(next_point3[1]);
 
 	for (int i = 0; i < points.pts_x.size(); ++i) {
-		double shift_x = points.pts_x[i] - points.ref_x;
-		double shift_y = points.pts_y[i] - points.ref_y;
+		double shift_x = points.pts_x[i] - state.x;
+		double shift_y = points.pts_y[i] - state.y;
 
-		points.pts_x[i] = (shift_x * cos(0 - points.ref_yaw) - shift_y * sin(0 - points.ref_yaw));
-		points.pts_y[i] = (shift_x * sin(0 - points.ref_yaw) + shift_y * cos(0 - points.ref_yaw));
+		points.pts_x[i] = (shift_x * cos(0 - state.yaw) - shift_y * sin(0 - state.yaw));
+		points.pts_y[i] = (shift_x * sin(0 - state.yaw) + shift_y * cos(0 - state.yaw));
 	}
 	return points;
 }
 
+
+//Builds point-by-point path
 Path BuildPath(Path previous_path, Path points, CarState& carState)
 {
 	//build spline
@@ -383,17 +382,18 @@ Path BuildPath(Path previous_path, Path points, CarState& carState)
 
 		double x1 = x0 + x_step;
 		double y1 = spline(x1);
-		//std::cout << "[" << x1 << ", " << y1 << "]" << std::endl;
 		double dist = distance(x0, y0, x1, y1);
 
 		x_step = x_step*target_step / dist;
 		x0 = x1;
 		y0 = y1;
-		double x_point = x1 * cos(points.ref_yaw) - y1 * sin(points.ref_yaw);
-		double y_point = x1 * sin(points.ref_yaw) + y1 * cos(points.ref_yaw);
+		double x_point = x1 * cos(carState.yaw) - y1 * sin(carState.yaw);
+		double y_point = x1 * sin(carState.yaw) + y1 * cos(carState.yaw);
 
-		x_point += points.ref_x;
-		y_point += points.ref_y;
+		x_point += carState.x;
+		y_point += carState.y;
+
+		//std::cout << "(" << x_point << ", " << y_point << ")" << std::endl;
 
 		newPath.pts_x.push_back(x_point);
 		newPath.pts_y.push_back(y_point);
@@ -455,6 +455,7 @@ int main() {
 					json obj = j[1];
         	// Ego - car's localization Data
 					Car egoCar(obj);
+					egoCar.lane = LaneFromPosition(egoCar.d);
 
 					Path previousPath;
 
@@ -474,8 +475,8 @@ int main() {
           auto sensor_fusion = obj["sensor_fusion"];
 
 					static CarState carState;
-					carState.s = egoCar.s;
-
+					
+					carState = egoCar;
 
 					std::vector<Car> otherCars;
 					for (int i = 0; i < sensor_fusion.size(); ++i) {
@@ -486,10 +487,11 @@ int main() {
 					PlanLaneAndSpeed(carState, otherCars);
 
 					//Calculate path including two old point and three future poits
-					Path points = CalculatePoints(egoCar, carState, previousPath, map);
+					Path points = CalculatePoints(carState, previousPath, map);
 	
 					//for (double x : points.pts_x) 	std::cout << x << std::endl;
 
+					//build point-by-point path
 					Path newPath = BuildPath(previousPath, points, carState);
 
 					json msgJson;

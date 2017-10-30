@@ -6,6 +6,12 @@
 #include <vector>
 #include "json.hpp"
 #include "constants.h"
+#include <math.h>
+
+// For converting back and forth between radians and degrees.
+constexpr double pi() { return M_PI; }
+double deg2rad(double x) { return x * pi() / 180; }
+double rad2deg(double x) { return x * 180 / pi(); }
 
 class Car {
 
@@ -40,7 +46,8 @@ public:
 			y = obj["y"];
 			s = obj["s"];
 			d = obj["d"];
-			yaw = obj["yaw"];
+			double yaw_degrees = obj["yaw"];
+			yaw = deg2rad(yaw_degrees);
 			double speed_mph = obj["speed"];
 			speed_mps = speed_mph / 2.237;
 		}
@@ -55,22 +62,28 @@ public:
 
 class CarState {
 public:
+	double x;
+	double y;
+	double yaw;
 	int lane;
 	double s;
 	double speed_mps;
 	double acceleration;
 
 	CarState() : lane(1), s(0), speed_mps(0), acceleration(0) {}
-
+	CarState& operator= (Car car) {
+		lane = car.lane;
+		s = car.s;
+		x = car.x;
+		y = car.y;
+		yaw = car.yaw;
+	}
 };
 
 typedef struct {
 	std::vector<double> pts_x;
 	std::vector<double> pts_y;
 	size_t size;
-	double ref_x;
-	double ref_y;
-	double ref_yaw;
 } Path;
 
 typedef struct {
@@ -79,7 +92,6 @@ typedef struct {
 	std::vector<double> s;
 	std::vector<double> dx;
 	std::vector<double> dy;
-
 } Map_waipoints;
 
 
