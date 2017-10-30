@@ -288,26 +288,9 @@ void PlanLaneAndSpeed(CarState& state, const std::vector<Car>& otherCars)
 
 }
 
-typedef struct {
-	std::vector<double> pts_x;
-	std::vector<double> pts_y;
-	size_t size;
-	double ref_x;
-	double ref_y;
-	double ref_yaw;
-} Path;
 
-typedef struct {
-	vector<double> x;
-	vector<double> y;
-	vector<double> s;
-	vector<double> dx;
-	vector<double> dy;
-
-} Map_waipoints;
-
-
-Path CalculatePath(Car ego_car, CarState state, Path previousPath, Map_waipoints map)
+//given previous path and predicted state, calculate points for building smooth path
+Path CalculatePoints(Car ego_car, CarState state, Path previousPath, Map_waipoints map)
 {
 	Path points;
 
@@ -317,7 +300,7 @@ Path CalculatePath(Car ego_car, CarState state, Path previousPath, Map_waipoints
 	double prev_x = ego_car.x;
 	double prev_y = ego_car.y;
 
-
+	//no previous points - extrapolate old from the current state
 	if (previousPath.size <= 1) {
 		prev_x = ego_car.x - cos(ego_car.yaw);
 		prev_y = ego_car.y - sin(ego_car.yaw);
@@ -330,28 +313,27 @@ Path CalculatePath(Car ego_car, CarState state, Path previousPath, Map_waipoints
 		points.ref_yaw = atan2(points.ref_y - prev_y, points.ref_x - prev_x);
 	}
 
-	//std::cout << "(" << prev_x << ", " << prev_y << "); ";
-	//std::cout << "(" << points.ref_x << ", " << points.ref_y << "); " << std::endl;
-
+	//two old points
 	points.pts_x.push_back(prev_x);
 	points.pts_x.push_back(points.ref_x);
 	points.pts_y.push_back(prev_y);
 	points.pts_y.push_back(points.ref_y);
 
+	//define three points in the future (depending on current speed)
 	double distance_to_next_point = state.speed_mps * 2.4;
 	if (distance_to_next_point < 5)
 		distance_to_next_point = 5;
-	vector<double> next_point30 = getXY(ego_car.s + distance_to_next_point, LaneToPosition(state.lane), map.s, map.x, map.y);
-	vector<double> next_point60 = getXY(ego_car.s + distance_to_next_point * 2, LaneToPosition(state.lane), map.s, map.x, map.y);
-	vector<double> next_point90 = getXY(ego_car.s + distance_to_next_point * 3, LaneToPosition(state.lane), map.s, map.x, map.y);
+	vector<double> next_point1 = getXY(ego_car.s + distance_to_next_point, LaneToPosition(state.lane), map.s, map.x, map.y);
+	vector<double> next_point2 = getXY(ego_car.s + distance_to_next_point * 2, LaneToPosition(state.lane), map.s, map.x, map.y);
+	vector<double> next_point3 = getXY(ego_car.s + distance_to_next_point * 3, LaneToPosition(state.lane), map.s, map.x, map.y);
 
-	points.pts_x.push_back(next_point30[0]);
-	points.pts_x.push_back(next_point60[0]);
-	points.pts_x.push_back(next_point90[0]);
+	points.pts_x.push_back(next_point1[0]);
+	points.pts_x.push_back(next_point2[0]);
+	points.pts_x.push_back(next_point3[0]);
 
-	points.pts_y.push_back(next_point30[1]);
-	points.pts_y.push_back(next_point60[1]);
-	points.pts_y.push_back(next_point90[1]);
+	points.pts_y.push_back(next_point1[1]);
+	points.pts_y.push_back(next_point2[1]);
+	points.pts_y.push_back(next_point3[1]);
 
 	for (int i = 0; i < points.pts_x.size(); ++i) {
 		double shift_x = points.pts_x[i] - points.ref_x;
@@ -361,6 +343,63 @@ Path CalculatePath(Car ego_car, CarState state, Path previousPath, Map_waipoints
 		points.pts_y[i] = (shift_x * sin(0 - points.ref_yaw) + shift_y * cos(0 - points.ref_yaw));
 	}
 	return points;
+}
+
+Path BuildPath(Path previous_path, Path points, CarState& carState)
+{
+	//build spline
+	tk::spline spline;
+	spline.set_points(points.pts_x, points.pts_y);
+
+
+	//all prev points from the last time
+	Path newPath = previous_path;
+
+	if (carState.speed_mps <= 0)
+		carState.speed_mps = 0.1;
+
+	double target_step = carState.speed_mps * time_step;
+	double dist = distance(points.pts_x[0], points.pts_y[0], points.pts_x[1], points.pts_y[1]);
+	double x_step = (points.pts_x[1] - points.pts_x[0])*target_step / dist;
+
+
+	//std::cout << "speed_mps=" << carState.speed_mps << ", acc=" << carState.acceleration << std::endl;
+	std::cout << "prev_size=" << previous_path.size << ", x_step=" << x_step << std::endl;
+
+
+	double x0 = 0;
+	double y0 = spline(x0);
+
+
+	for (int i = 0; i < 50 - previous_path.size; ++i) {
+
+		carState.speed_mps = carState.speed_mps + carState.acceleration / (50 - previous_path.size);
+		target_step = carState.speed_mps * time_step;
+		if (carState.speed_mps < 0.1)
+			carState.speed_mps = 0.1;
+		if (carState.speed_mps > target_speed_mps)
+			carState.speed_mps = target_speed_mps;
+
+
+		double x1 = x0 + x_step;
+		double y1 = spline(x1);
+		//std::cout << "[" << x1 << ", " << y1 << "]" << std::endl;
+		double dist = distance(x0, y0, x1, y1);
+
+		x_step = x_step*target_step / dist;
+		x0 = x1;
+		y0 = y1;
+		double x_point = x1 * cos(points.ref_yaw) - y1 * sin(points.ref_yaw);
+		double y_point = x1 * sin(points.ref_yaw) + y1 * cos(points.ref_yaw);
+
+		x_point += points.ref_x;
+		y_point += points.ref_y;
+
+		newPath.pts_x.push_back(x_point);
+		newPath.pts_y.push_back(y_point);
+	}
+
+	return newPath;
 }
 
 int main() {
@@ -415,16 +454,16 @@ int main() {
           // j[1] is the data JSON object
 					json obj = j[1];
         	// Ego - car's localization Data
-					Car ego_car(obj);
+					Car egoCar(obj);
 
-					Path previous_path;
+					Path previousPath;
 
           // Previous path data given to the Planner
           std::vector<double> previous_path_x = j[1]["previous_path_x"];
 					std::vector<double> previous_path_y = j[1]["previous_path_y"];
-					previous_path.pts_x = previous_path_x;
-					previous_path.pts_y = previous_path_y;
-					previous_path.size = previous_path_x.size();
+					previousPath.pts_x = previous_path_x;
+					previousPath.pts_y = previous_path_y;
+					previousPath.size = previous_path_x.size();
 
           // Previous path's end s and d values 
           double end_path_s = j[1]["end_path_s"];
@@ -434,11 +473,8 @@ int main() {
           // Sensor Fusion Data, a list of all other cars on the same side of the road.
           auto sensor_fusion = obj["sensor_fusion"];
 
-          json msgJson;
-
-
 					static CarState carState;
-					carState.s = ego_car.s;
+					carState.s = egoCar.s;
 
 
 					std::vector<Car> otherCars;
@@ -448,74 +484,22 @@ int main() {
 
 					//estimates next lane position and speed
 					PlanLaneAndSpeed(carState, otherCars);
-					std::cout << "carState: " << carState.acceleration << ", " << carState.speed_mps << std::endl;
 
 					//Calculate path including two old point and three future poits
-					Path points = CalculatePath(ego_car, carState, previous_path, map);
+					Path points = CalculatePoints(egoCar, carState, previousPath, map);
 	
 					//for (double x : points.pts_x) 	std::cout << x << std::endl;
 
-					//build spline
-					tk::spline s;
-					s.set_points(points.pts_x, points.pts_y);
+					Path newPath = BuildPath(previousPath, points, carState);
 
+					json msgJson;
+					msgJson["next_x"] = newPath.pts_x;
+					msgJson["next_y"] = newPath.pts_y;
 
-					//all prev points from the last time
-					Path newPath = previous_path;
+          auto msg = "42[\"control\","+ msgJson.dump()+"]";
 
-					//TODO: last unrefactored 
-					if (carState.speed_mps <= 0)
-						carState.speed_mps = 0.1;
-
-					double target_step = carState.speed_mps * time_step;
-					double dist = distance(points.pts_x[0], points.pts_y[0], points.pts_x[1], points.pts_y[1]);
-					double x_step = (points.pts_x[1] - points.pts_x[0])*target_step / dist;
-
-
-					std::cout << "speed_mps=" << carState.speed_mps << ", acc=" << carState.acceleration << std::endl;
-					std::cout << "prev_size=" << previous_path.size << ", x_step=" << x_step << std::endl;
-
-
-
-					double x0 = 0;
-					double y0 = s(x0);
-
-
-						for (int i = 0; i < 50 - previous_path.size; ++i) {
-
-							carState.speed_mps = carState.speed_mps + carState.acceleration / (50- previous_path.size);
-							target_step = carState.speed_mps * time_step;
-							if (carState.speed_mps < 0.1)
-								carState.speed_mps = 0.1;
-							if (carState.speed_mps > target_speed_mps)
-								carState.speed_mps = target_speed_mps;
-
-
-							double x1 = x0 + x_step;
-							double y1 = s(x1);
-							//std::cout << "[" << x1 << ", " << y1 << "]" << std::endl;
-							double dist = distance(x0, y0, x1, y1);
-
-							x_step = x_step*target_step / dist;
-							x0 = x1;
-							y0 = y1;
-							double x_point = x1 * cos(points.ref_yaw) - y1 * sin(points.ref_yaw);
-							double y_point = x1 * sin(points.ref_yaw) + y1 * cos(points.ref_yaw);
-
-							x_point += points.ref_x;
-							y_point += points.ref_y;
-
-							newPath.pts_x.push_back(x_point);
-							newPath.pts_y.push_back(y_point);
-						}
-		
-						msgJson["next_x"] = newPath.pts_x;
-						msgJson["next_y"] = newPath.pts_y;
-
-          	auto msg = "42[\"control\","+ msgJson.dump()+"]";
-
-          	//this_thread::sleep_for(chrono::milliseconds(1000));
-          	ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+          //this_thread::sleep_for(chrono::milliseconds(1000));
+          ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
           
         }
       } else {

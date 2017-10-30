@@ -3,6 +3,7 @@
 #ifndef CAR_H
 #define CAR_H
 
+#include <vector>
 #include "json.hpp"
 #include "constants.h"
 
@@ -62,6 +63,24 @@ public:
 	CarState() : lane(1), s(0), speed_mps(0), acceleration(0) {}
 
 };
+
+typedef struct {
+	std::vector<double> pts_x;
+	std::vector<double> pts_y;
+	size_t size;
+	double ref_x;
+	double ref_y;
+	double ref_yaw;
+} Path;
+
+typedef struct {
+	std::vector<double> x;
+	std::vector<double> y;
+	std::vector<double> s;
+	std::vector<double> dx;
+	std::vector<double> dy;
+
+} Map_waipoints;
 
 
 
