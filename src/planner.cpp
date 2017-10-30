@@ -54,7 +54,7 @@ int CanGo(double distance, double relSpeed)
 
 //defies future car position (lane) and speed
 // NB! Updates CarState!!!
-void PlanLaneAndSpeed(CarState& state, const std::vector<Car>& otherCars)
+void PlanPath(CarState& state, const std::vector<Car>& otherCars)
 {
 	int lane = state.lane;
 	bool bCanGoLeft = (lane > 0);
@@ -99,8 +99,8 @@ void PlanLaneAndSpeed(CarState& state, const std::vector<Car>& otherCars)
 
 
 	double slow_down(0);
-	if (distances[lane] > 0 && times[lane] < 1.7 && speeds[lane] < 0.)
-		slow_down = 1.7 / times[lane];
+	if (distances[lane] > 0 && times[lane] < collision_time && speeds[lane] < 0.)
+		slow_down = collision_time / times[lane];
 	if (slow_down > 8) slow_down = 8;
 
 

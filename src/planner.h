@@ -124,7 +124,7 @@ std::vector<double> getXY(double s, double d, const Map_waipoints & map);
 
 //defies future car position (lane) and speed
 // NB! Updates CarState!!!
-void PlanLaneAndSpeed(CarState& state, const std::vector<Car>& otherCars);
+void PlanPath(CarState& state, const std::vector<Car>& otherCars);
 
 
 //given previous path and predicted state, calculate points for building smooth path

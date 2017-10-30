@@ -215,7 +215,7 @@ int main() {
 					}
 
 					//estimates next lane position and speed
-					PlanLaneAndSpeed(carState, otherCars);
+					PlanPath(carState, otherCars);
 
 					//Calculate path including two old point and three future poits
 					Path points = CalculatePoints(carState, previousPath, map);
