@@ -45,7 +45,7 @@ std::vector<int> LanesFromPosition(double d)
 
 int CanGo(double distance, double relSpeed)
 {
-	if ((distance + relSpeed) > -9 && (distance + relSpeed) < 25)
+	if ((distance + relSpeed) > -10 && (distance + relSpeed) < 25)
 		return 0;
 	else if (distance < 60)
 		return 1;
@@ -74,7 +74,7 @@ void PlanLaneAndSpeed(CarState& state, const std::vector<Car>& otherCars)
 
 			double distance = (vehicle.s - state.s);
 			double relSpeed = vehicle.speed_mps - state.speed_mps;
-			double timeToCollision = (distance + relSpeed) / vehicle.speed_mps;
+			double timeToCollision = (distance + relSpeed) / state.speed_mps;
 			if (timeToCollision < 0) timeToCollision = 1e9;
 			if (timeToCollision < times[laneOther])
 				times[laneOther] = timeToCollision;
@@ -139,7 +139,7 @@ void PlanLaneAndSpeed(CarState& state, const std::vector<Car>& otherCars)
 
 
 //given previous path and predicted state, calculate points for building smooth path
-Path CalculatePoints(CarState & state, Path previousPath, Map_waipoints map)
+Path CalculatePoints(CarState & state, Path previousPath, const Map_waipoints & map)
 {
 	Path points;
 
@@ -168,12 +168,15 @@ Path CalculatePoints(CarState & state, Path previousPath, Map_waipoints map)
 	//std::cout << state.x << ", " << state.y << ", " << state.yaw << std::endl;
 
 	//define three points in the future (depending on current speed)
-	double distance_to_next_point = state.speed_mps * 2.4;
+	double distance_to_next_point = state.speed_mps * 2.6;
 	if (distance_to_next_point < 5)
 		distance_to_next_point = 5;
-	std::vector<double> next_point1 = getXY(state.s + distance_to_next_point, LaneToPosition(state.lane), map);
-	std::vector<double> next_point2 = getXY(state.s + distance_to_next_point * 2, LaneToPosition(state.lane), map);
-	std::vector<double> next_point3 = getXY(state.s + distance_to_next_point * 3, LaneToPosition(state.lane), map);
+  double newPos = LaneToPosition(state.lane);
+  if (abs(newPos - state.d) > (lane_width + 1) )
+    distance_to_next_point *= 1.2;
+	std::vector<double> next_point1 = getXY(state.s + distance_to_next_point, newPos, map);
+	std::vector<double> next_point2 = getXY(state.s + distance_to_next_point * 2, newPos, map);
+	std::vector<double> next_point3 = getXY(state.s + distance_to_next_point * 3, newPos, map);
 
 	points.pts_x.push_back(next_point1[0]);
 	points.pts_x.push_back(next_point2[0]);
