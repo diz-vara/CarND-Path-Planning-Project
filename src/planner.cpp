@@ -218,7 +218,7 @@ Path BuildPath(Path previous_path, Path points, CarState& carState)
 
 
 	//std::cout << "speed_mps=" << carState.speed_mps << ", acc=" << carState.acceleration << std::endl;
-	std::cout << "prev_size=" << previous_path.size << ", x_step=" << x_step << std::endl;
+	//std::cout << "prev_size=" << previous_path.size << ", x_step=" << x_step << std::endl;
 
 
 	double x0 = 0;
