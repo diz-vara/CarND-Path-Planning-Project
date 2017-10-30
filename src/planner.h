@@ -68,6 +68,7 @@ public:
 	double yaw;
 	int lane;
 	double s;
+  double d;
 	double speed_mps;
 	double acceleration;
 
@@ -75,6 +76,7 @@ public:
 	CarState& operator= (Car car) {
 		lane = car.lane;
 		s = car.s;
+    d = car.d;
 		x = car.x;
 		y = car.y;
 		yaw = car.yaw;
@@ -126,10 +128,7 @@ void PlanLaneAndSpeed(CarState& state, const std::vector<Car>& otherCars);
 
 
 //given previous path and predicted state, calculate points for building smooth path
-Path CalculatePoints(CarState & state, Path previousPath, Map_waipoints map);
-
-//given previous path and predicted state, calculate points for building smooth path
-Path CalculatePoints(CarState & state, Path previousPath, Map_waipoints map);
+Path CalculatePoints(CarState & state, Path previousPath, const Map_waipoints & map);
 
 //Builds point-by-point path
 Path BuildPath(Path previous_path, Path points, CarState& carState);
